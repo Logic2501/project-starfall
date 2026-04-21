@@ -29,6 +29,22 @@ body {
   grid-template-rows: auto 1fr auto;
 }
 
+.build-badge {
+  position: fixed;
+  top: 10px;
+  right: 12px;
+  z-index: 30;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  color: #d6e7ff;
+  background: rgba(8, 22, 40, 0.82);
+  border: 1px solid rgba(115, 170, 238, 0.45);
+  border-radius: 999px;
+  padding: 4px 9px;
+  pointer-events: none;
+}
+
 .hud-top,
 .bottom-panel {
   display: flex;
