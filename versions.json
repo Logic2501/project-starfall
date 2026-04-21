@@ -1,8 +1,9 @@
 {
-  "stableVersion": "0.2.24",
+  "stableVersion": "0.2.25",
   "publishedVersions": [
     "0.2.23",
-    "0.2.24"
+    "0.2.24",
+    "0.2.25"
   ],
-  "updatedAt": "2026-04-21T10:06:47.763Z"
+  "updatedAt": "2026-04-21T10:17:09.051Z"
 }

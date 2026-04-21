@@ -6,7 +6,7 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <title>Project Starfall v0.2.24</title>
+  <title>Project Starfall v0.2.25</title>
   <style>
 /* src/styles/main.css */
 :root {
@@ -38,6 +38,22 @@ body {
   overflow: hidden;
   display: grid;
   grid-template-rows: auto 1fr auto;
+}
+
+.build-badge {
+  position: fixed;
+  top: 10px;
+  right: 12px;
+  z-index: 30;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  color: #d6e7ff;
+  background: rgba(8, 22, 40, 0.82);
+  border: 1px solid rgba(115, 170, 238, 0.45);
+  border-radius: 999px;
+  padding: 4px 9px;
+  pointer-events: none;
 }
 
 .hud-top,
@@ -83,7 +99,8 @@ button {
   </style>
 </head>
 <body>
-  <!-- build: 2026-04-21T10:05:00.421Z -->
+  <!-- build: 2026-04-21T10:17:08.756Z -->
+  <div class="build-badge" id="buildBadge">v0.2.25</div>
   <div id="app">
     <header class="hud-top">
       <span id="waveLabel">波次：1</span>
