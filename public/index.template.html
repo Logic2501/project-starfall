@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+  <title>Project Starfall v__APP_VERSION__</title>
+  <style>
+/*__INLINE_CSS__*/
+  </style>
+</head>
+<body>
+  <!-- build: __BUILD_STAMP__ -->
+  <div id="app">
+    <header class="hud-top">
+      <span id="waveLabel">波次：1</span>
+      <span id="resourceLabel">资源：0</span>
+      <button id="pauseBtn" type="button">暂停</button>
+      <button id="langBtn" type="button">中文 / English</button>
+    </header>
+
+    <main class="battlefield-wrap">
+      <canvas id="battlefield" width="1280" height="720" aria-label="星潮计划战场画布"></canvas>
+    </main>
+
+    <aside class="bottom-panel">
+      <button id="startWaveBtn" type="button">开始下一波</button>
+      <button id="techBtn" type="button">科技（原型壳）</button>
+      <div id="resultPanel" class="result-panel" aria-live="polite"></div>
+    </aside>
+  </div>
+
+  <script>
+    window.Starfall = window.Starfall || {};
+    window.Starfall.runtime = window.Starfall.runtime || { error: null };
+
+    (function () {
+      const writeRuntimeError = (err) => {
+        window.Starfall.runtime.error = err;
+        const panel = document.getElementById('resultPanel');
+        if (panel) {
+          const msg = String(err && err.message ? err.message : err).slice(0, 240);
+          panel.textContent = `运行错误：${msg}`;
+        }
+        console.error(err);
+      };
+
+      window.addEventListener('error', (event) => {
+        const err = event.error || new Error(event.message || 'Unknown error');
+        writeRuntimeError(err);
+      });
+
+      window.addEventListener('unhandledrejection', (event) => {
+        const err = event.reason instanceof Error ? event.reason : new Error(String(event.reason));
+        writeRuntimeError(err);
+      });
+    })();
+  </script>
+  <script>
+//__INLINE_JS__
+  </script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+{
+  "name": "starfall-prototype-v0.2",
+  "colors": {
+    "space_bg": "#0d1626",
+    "planet_surface": "#31584e",
+    "planet_shadow": "#28463e",
+    "atmosphere": "#5ab4dc",
+    "asteroid": "#8a8f98",
+    "fragment_captured": "#8ee89f",
+    "fragment_uncaptured": "#d8a36d",
+    "projectile": "#ffd879"
+  }
+}

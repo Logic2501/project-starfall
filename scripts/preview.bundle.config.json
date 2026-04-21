@@ -1,0 +1,14 @@
+{
+  "template": "public/preview.template.html",
+  "css": [
+    "src/preview/preview.css"
+  ],
+  "js": [
+    "src/core/bootstrap.js",
+    "src/entities/asteroid.js",
+    "src/preview/animation-preview.js",
+    "src/preview/scenes/asteroid-layout-scene.js",
+    "src/preview/scenes/fracture-burst-scene.js",
+    "src/preview/main.js"
+  ]
+}

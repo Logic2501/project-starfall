@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Project Starfall Dev</title>
+  <link rel="stylesheet" href="../src/styles/main.css" />
+</head>
+<body>
+  <div id="app">
+    <header class="hud-top">
+      <span id="waveLabel">波次：1</span>
+      <span id="resourceLabel">资源：0</span>
+      <button id="pauseBtn" type="button">暂停</button>
+      <button id="langBtn" type="button">中文 / English</button>
+    </header>
+
+    <main class="battlefield-wrap">
+      <canvas id="battlefield" width="1280" height="720" aria-label="星潮计划战场画布"></canvas>
+    </main>
+
+    <aside class="bottom-panel">
+      <button id="startWaveBtn" type="button">开始下一波</button>
+      <button id="techBtn" type="button">科技（原型壳）</button>
+      <div id="resultPanel" class="result-panel" aria-live="polite"></div>
+    </aside>
+  </div>
+
+  <script>
+    window.Starfall = window.Starfall || {};
+    window.Starfall.runtime = window.Starfall.runtime || { error: null };
+
+    (function () {
+      const writeRuntimeError = (err) => {
+        window.Starfall.runtime.error = err;
+        const panel = document.getElementById('resultPanel');
+        if (panel) {
+          const msg = String(err && err.message ? err.message : err).slice(0, 240);
+          panel.textContent = `运行错误：${msg}`;
+        }
+        console.error(err);
+      };
+
+      window.addEventListener('error', (event) => {
+        const err = event.error || new Error(event.message || 'Unknown error');
+        writeRuntimeError(err);
+      });
+
+      window.addEventListener('unhandledrejection', (event) => {
+        const err = event.reason instanceof Error ? event.reason : new Error(String(event.reason));
+        writeRuntimeError(err);
+      });
+    })();
+  </script>
+  <script src="../src/core/bootstrap.js"></script>
+  <script src="../src/core/config.js"></script>
+  <script src="../src/core/geometry.js"></script>
+  <script src="../src/core/state-store.js"></script>
+  <script src="../src/core/event-bus.js"></script>
+  <script src="../src/core/game-loop.js"></script>
+
+  <script src="../src/data/balancing.js"></script>
+  <script src="../src/data/waves.v0.2.js"></script>
+  <script src="../src/data/locale/zh-CN.js"></script>
+  <script src="../src/data/locale/en-US.js"></script>
+
+  <script src="../src/entities/asteroid.js"></script>
+  <script src="../src/entities/fragment.js"></script>
+  <script src="../src/entities/projectile.js"></script>
+  <script src="../src/entities/turret.js"></script>
+
+  <script src="../src/systems/spawn-system.js"></script>
+  <script src="../src/systems/wave-system.js"></script>
+  <script src="../src/systems/projectile-system.js"></script>
+  <script src="../src/systems/collision-system.js"></script>
+  <script src="../src/systems/fracture-system.js"></script>
+  <script src="../src/systems/fragment-system.js"></script>
+  <script src="../src/systems/capture-system.js"></script>
+  <script src="../src/systems/settlement-system.js"></script>
+  <script src="../src/systems/economy-system.js"></script>
+
+  <script src="../src/render/canvas-renderer.js"></script>
+  <script src="../src/render/layers/background-layer.js"></script>
+  <script src="../src/render/layers/combat-layer.js"></script>
+  <script src="../src/render/layers/ui-layer.js"></script>
+
+  <script src="../src/ui/hud.js"></script>
+  <script src="../src/ui/post-wave-panel.js"></script>
+  <script src="../src/ui/tech-panel.js"></script>
+  <script src="../src/ui/language-toggle.js"></script>
+
+  <script src="../src/main.js"></script>
+</body>
+</html>

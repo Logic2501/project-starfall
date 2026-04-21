@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Starfall Asset Preview v0.2.2</title>
+  <style>
+/* src/preview/preview.css */
+:root {
+  --bg: #0f1420;
+  --panel: #172133;
+  --text: #e8edf6;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  padding: 12px;
+  color: var(--text);
+  font-family: "Noto Sans SC", "PingFang SC", sans-serif;
+  background: radial-gradient(circle at top, #1f2d45 0%, var(--bg) 58%);
+}
+
+.toolbar {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 10px;
+  background: color-mix(in srgb, var(--panel) 88%, black);
+  border: 1px solid #2b3f61;
+  padding: 8px 10px;
+}
+
+#previewCanvas {
+  width: min(96vw, 960px);
+  height: auto;
+  border: 1px solid #2c4368;
+  background: #0c1320;
+}
+
+button,
+select {
+  border: 1px solid #345179;
+  background: #152238;
+  color: var(--text);
+  padding: 4px 8px;
+}
+
+#previewMeta {
+  margin-left: auto;
+  opacity: 0.8;
+}
+
+  </style>
+</head>
+<body>
+  <section class="toolbar">
+    <label>
+      场景：
+      <select id="sceneSelect"></select>
+    </label>
+    <button id="playBtn" type="button">暂停</button>
+    <button id="resetBtn" type="button">重置</button>
+    <span id="previewMeta">Preview v0.2.2</span>
+  </section>
+  <canvas id="previewCanvas" width="960" height="540"></canvas>
+  <script>
+// src/core/bootstrap.js
+(function () {
+  window.Starfall = window.Starfall || {};
+  Starfall.modules = Starfall.modules || {};
+})();
+
+
+// src/entities/asteroid.js
+(function () {
+  Starfall.entities = Starfall.entities || {};
+
+  const makePolygon = (baseRadius, pointsCount, jitter) => {
+    const points = [];
+    for (let i = 0; i < pointsCount; i += 1) {
+      const t = (i / pointsCount) * Math.PI * 2;
+      const radius = baseRadius * (1 - jitter + Math.random() * jitter * 2);
+      points.push({ x: Math.cos(t) * radius, y: Math.sin(t) * radius });
+    }
+    return points;
+  };
+
+  const createLayout = () => {
+    const coreCount = 2 + Math.floor(Math.random() * 4); // 2~5
+    const detailCount = 3 + Math.floor(Math.random() * 5);
+    const chunks = [];
+
+    for (let i = 0; i < coreCount; i += 1) {
+      chunks.push({
+        kind: 'core',
+        ox: (Math.random() - 0.5) * 22,
+        oy: (Math.random() - 0.5) * 16,
+        polygon: makePolygon(16 + Math.random() * 8, 6 + Math.floor(Math.random() * 3), 0.28)
+      });
+    }
+
+    for (let i = 0; i < detailCount; i += 1) {
+      chunks.push({
+        kind: 'detail',
+        ox: (Math.random() - 0.5) * 30,
+        oy: (Math.random() - 0.5) * 22,
+        polygon: makePolygon(5 + Math.random() * 5, 5 + Math.floor(Math.random() * 3), 0.4)
+      });
+    }
+    return chunks;
+  };
+
+  Starfall.entities.createAsteroid = (x, y, speed, value) => ({
+    id: crypto.randomUUID(),
+    x,
+    y,
+    vx: speed,
+    vy: speed * 0.15,
+    radius: 26,
+    rotation: Math.random() * Math.PI * 2,
+    spin: (Math.random() - 0.5) * 0.8,
+    layout: createLayout(),
+    hp: 100,
+    value
+  });
+})();
+
+
+// src/preview/animation-preview.js
+(function () {
+  Starfall.preview = Starfall.preview || {};
+
+  Starfall.preview.createRunner = ({ canvas, scenes }) => {
+    const ctx = canvas.getContext('2d');
+    const state = {
+      scenes,
+      sceneIndex: 0,
+      playing: true,
+      sceneState: null,
+      lastTs: performance.now()
+    };
+
+    const activateScene = (index) => {
+      state.sceneIndex = index;
+      const scene = state.scenes[state.sceneIndex];
+      state.sceneState = scene.create();
+      scene.reset?.(state.sceneState);
+    };
+
+    const reset = () => {
+      activateScene(state.sceneIndex);
+    };
+
+    const setSceneIndex = (index) => {
+      activateScene(index);
+    };
+
+    const togglePlay = () => {
+      state.playing = !state.playing;
+      return state.playing;
+    };
+
+    const tick = (ts) => {
+      const dt = Math.min(0.033, (ts - state.lastTs) / 1000);
+      state.lastTs = ts;
+      const scene = state.scenes[state.sceneIndex];
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      if (state.playing) {
+        scene.update?.(state.sceneState, dt);
+      }
+      scene.draw(state.sceneState, ctx, canvas);
+      requestAnimationFrame(tick);
+    };
+
+    activateScene(0);
+    requestAnimationFrame(tick);
+
+    return {
+      getScenes: () => state.scenes,
+      getSceneIndex: () => state.sceneIndex,
+      isPlaying: () => state.playing,
+      setSceneIndex,
+      togglePlay,
+      reset
+    };
+  };
+})();
+
+
+// src/preview/scenes/asteroid-layout-scene.js
+(function () {
+  Starfall.preview = Starfall.preview || {};
+  Starfall.preview.scenes = Starfall.preview.scenes || [];
+
+  const drawPolygon = (ctx, points) => {
+    if (!points || points.length < 3) return;
+    ctx.beginPath();
+    ctx.moveTo(points[0].x, points[0].y);
+    for (let i = 1; i < points.length; i += 1) {
+      ctx.lineTo(points[i].x, points[i].y);
+    }
+    ctx.closePath();
+  };
+
+  Starfall.preview.scenes.push({
+    id: 'asteroid-layout',
+    label: '天体拼接结构预览',
+    create() {
+      return {
+        asteroid: Starfall.entities.createAsteroid(480, 270, 0, 10)
+      };
+    },
+    reset(sceneState) {
+      sceneState.asteroid = Starfall.entities.createAsteroid(480, 270, 0, 10);
+    },
+    update(sceneState, dt) {
+      sceneState.asteroid.rotation += dt * 0.6;
+    },
+    draw(sceneState, ctx, canvas) {
+      const a = sceneState.asteroid;
+      ctx.fillStyle = '#0d1626';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      ctx.save();
+      ctx.translate(a.x, a.y);
+      ctx.rotate(a.rotation);
+      for (const chunk of a.layout) {
+        ctx.save();
+        ctx.translate(chunk.ox, chunk.oy);
+        drawPolygon(ctx, chunk.polygon);
+        ctx.fillStyle = chunk.kind === 'core' ? '#8a8f98' : '#a2a8b1';
+        ctx.fill();
+        ctx.restore();
+      }
+      ctx.restore();
+
+      ctx.fillStyle = '#d8e0ee';
+      ctx.fillText('主体块 + 附着块（统一生成框架）', 16, 24);
+    }
+  });
+})();
+
+
+// src/preview/scenes/fracture-burst-scene.js
+(function () {
+  Starfall.preview = Starfall.preview || {};
+  Starfall.preview.scenes = Starfall.preview.scenes || [];
+
+  const spawnFragments = () => {
+    const parts = [];
+    for (let i = 0; i < 4; i += 1) {
+      parts.push({
+        x: 480,
+        y: 260,
+        r: 12 + Math.random() * 8,
+        kind: 'big',
+        vx: (Math.random() - 0.5) * 120,
+        vy: -40 + Math.random() * 80
+      });
+    }
+    for (let i = 0; i < 16; i += 1) {
+      parts.push({
+        x: 480,
+        y: 260,
+        r: 4 + Math.random() * 4,
+        kind: 'small',
+        vx: (Math.random() - 0.5) * 260,
+        vy: (Math.random() - 0.5) * 180
+      });
+    }
+    return parts;
+  };
+
+  Starfall.preview.scenes.push({
+    id: 'fracture-burst',
+    label: '爆裂碎片扩散预览',
+    create() {
+      return {
+        timer: 0,
+        fragments: spawnFragments()
+      };
+    },
+    reset(sceneState) {
+      sceneState.timer = 0;
+      sceneState.fragments = spawnFragments();
+    },
+    update(sceneState, dt) {
+      sceneState.timer += dt;
+      for (const f of sceneState.fragments) {
+        f.x += f.vx * dt;
+        f.y += f.vy * dt;
+        f.vy += 60 * dt;
+      }
+      if (sceneState.timer > 2.2) {
+        sceneState.timer = 0;
+        sceneState.fragments = spawnFragments();
+      }
+    },
+    draw(sceneState, ctx, canvas) {
+      ctx.fillStyle = '#111727';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      for (const f of sceneState.fragments) {
+        ctx.beginPath();
+        ctx.arc(f.x, f.y, f.r, 0, Math.PI * 2);
+        ctx.fillStyle = f.kind === 'big' ? '#d4a074' : '#f1cb82';
+        ctx.fill();
+      }
+
+      ctx.fillStyle = '#e6edf8';
+      ctx.fillText('命中点附近优先崩裂（大碎块 + 小碎块）', 16, 24);
+    }
+  });
+})();
+
+
+// src/preview/main.js
+(function () {
+  const canvas = document.getElementById('previewCanvas');
+  const select = document.getElementById('sceneSelect');
+  const playBtn = document.getElementById('playBtn');
+  const resetBtn = document.getElementById('resetBtn');
+
+  const runner = Starfall.preview.createRunner({
+    canvas,
+    scenes: Starfall.preview.scenes
+  });
+
+  runner.getScenes().forEach((scene, index) => {
+    const option = document.createElement('option');
+    option.value = String(index);
+    option.textContent = scene.label;
+    select.appendChild(option);
+  });
+  select.value = String(runner.getSceneIndex());
+
+  select.addEventListener('change', (e) => {
+    runner.setSceneIndex(Number(e.target.value));
+  });
+
+  playBtn.addEventListener('click', () => {
+    const playing = runner.togglePlay();
+    playBtn.textContent = playing ? '暂停' : '播放';
+  });
+
+  resetBtn.addEventListener('click', () => {
+    runner.reset();
+  });
+})();
+
+  </script>
+</body>
+</html>

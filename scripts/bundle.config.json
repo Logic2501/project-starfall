@@ -1,0 +1,46 @@
+{
+  "template": "public/index.template.html",
+  "css": [
+    "src/styles/main.css"
+  ],
+  "js": [
+    "src/core/bootstrap.js",
+    "src/core/config.js",
+    "src/core/geometry.js",
+    "src/core/state-store.js",
+    "src/core/event-bus.js",
+    "src/core/game-loop.js",
+
+    "src/data/balancing.js",
+    "src/data/waves.v0.2.js",
+    "src/data/locale/zh-CN.js",
+    "src/data/locale/en-US.js",
+
+    "src/entities/asteroid.js",
+    "src/entities/fragment.js",
+    "src/entities/projectile.js",
+    "src/entities/turret.js",
+
+    "src/systems/spawn-system.js",
+    "src/systems/wave-system.js",
+    "src/systems/projectile-system.js",
+    "src/systems/collision-system.js",
+    "src/systems/fracture-system.js",
+    "src/systems/fragment-system.js",
+    "src/systems/capture-system.js",
+    "src/systems/settlement-system.js",
+    "src/systems/economy-system.js",
+
+    "src/render/canvas-renderer.js",
+    "src/render/layers/background-layer.js",
+    "src/render/layers/combat-layer.js",
+    "src/render/layers/ui-layer.js",
+
+    "src/ui/hud.js",
+    "src/ui/post-wave-panel.js",
+    "src/ui/tech-panel.js",
+    "src/ui/language-toggle.js",
+
+    "src/main.js"
+  ]
+}

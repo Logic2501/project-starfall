@@ -1,0 +1,422 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Starfall Terrain Adjuster</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #09111d;
+      --panel: #112033;
+      --line: #2a4768;
+      --text: #e7f0fa;
+      --muted: #91a7bd;
+      --accent: #89d7ff;
+      --ok: #8ee89f;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "SF Mono", "Cascadia Code", Consolas, monospace;
+      background: radial-gradient(circle at top, #13243b 0%, var(--bg) 62%);
+      color: var(--text);
+    }
+
+    .app {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 24px;
+      display: grid;
+      grid-template-columns: 420px 1fr;
+      gap: 20px;
+    }
+
+    .panel {
+      background: rgba(17, 32, 51, 0.92);
+      border: 1px solid rgba(137, 215, 255, 0.18);
+      border-radius: 16px;
+      padding: 18px;
+      box-shadow: 0 24px 80px rgba(0, 0, 0, 0.28);
+    }
+
+    h1, h2 {
+      margin: 0 0 14px;
+      font-size: 18px;
+      line-height: 1.2;
+    }
+
+    p, .meta, .status {
+      margin: 0 0 12px;
+      color: var(--muted);
+      line-height: 1.5;
+      font-size: 13px;
+    }
+
+    .control {
+      margin-bottom: 16px;
+      padding-bottom: 14px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    .control:last-of-type {
+      border-bottom: 0;
+      padding-bottom: 0;
+    }
+
+    .control-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 8px;
+    }
+
+    .control label {
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .value {
+      color: var(--accent);
+      font-size: 12px;
+    }
+
+    input[type="range"] {
+      width: 100%;
+    }
+
+    .buttons {
+      display: flex;
+      gap: 10px;
+      margin-top: 18px;
+      flex-wrap: wrap;
+    }
+
+    button {
+      border: 0;
+      border-radius: 10px;
+      padding: 10px 14px;
+      font: inherit;
+      font-size: 13px;
+      cursor: pointer;
+      color: #05111e;
+      background: var(--accent);
+    }
+
+    button.secondary {
+      background: #bfd2e3;
+    }
+
+    button.ghost {
+      background: #22364f;
+      color: var(--text);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .canvas-wrap {
+      position: relative;
+      overflow: hidden;
+      border-radius: 16px;
+      background: #08111d;
+      border: 1px solid rgba(137, 215, 255, 0.16);
+    }
+
+    canvas {
+      width: 100%;
+      height: auto;
+      display: block;
+      aspect-ratio: 16 / 9;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .stat {
+      background: rgba(255, 255, 255, 0.04);
+      border-radius: 10px;
+      padding: 10px 12px;
+    }
+
+    .stat-key {
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 4px;
+    }
+
+    .stat-value {
+      color: var(--ok);
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 240px;
+      margin-top: 14px;
+      resize: vertical;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: #08111d;
+      color: var(--text);
+      padding: 12px;
+      font: inherit;
+      line-height: 1.45;
+    }
+
+    @media (max-width: 1100px) {
+      .app {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <section class="panel">
+      <h1>地形调整器</h1>
+      <p>打开时加载当前 `config` 快照。拖动滑块只影响预览；点击 `Save` 后才生成并尝试写回 `src/core/config.js`。</p>
+      <div class="control">
+        <div class="control-head">
+          <label for="planetCurvature">planetCurvature</label>
+          <span class="value" id="planetCurvatureValue"></span>
+        </div>
+        <input id="planetCurvature" type="range" min="0.08" max="0.40" step="0.005" />
+        <div class="meta">越小越平，内部会自动映射成圆心下移量。</div>
+      </div>
+      <div class="control">
+        <div class="control-head">
+          <label for="gravityRangeRadiusFactor">gravityRangeRadiusFactor</label>
+          <span class="value" id="gravityRangeRadiusFactorValue"></span>
+        </div>
+        <input id="gravityRangeRadiusFactor" type="range" min="0.400" max="1.100" step="0.001" />
+      </div>
+      <div class="control">
+        <div class="control-head">
+          <label for="atmosphereRadiusFactor">atmosphereRadiusFactor</label>
+          <span class="value" id="atmosphereRadiusFactorValue"></span>
+        </div>
+        <input id="atmosphereRadiusFactor" type="range" min="0.350" max="0.900" step="0.0005" />
+      </div>
+      <div class="control">
+        <div class="control-head">
+          <label for="groundRadiusFactor">groundRadiusFactor</label>
+          <span class="value" id="groundRadiusFactorValue"></span>
+        </div>
+        <input id="groundRadiusFactor" type="range" min="0.250" max="0.800" step="0.0005" />
+      </div>
+      <div class="buttons">
+        <button id="saveBtn" type="button">Save</button>
+        <button id="copyBtn" class="secondary" type="button">复制 config.js</button>
+        <button id="resetBtn" class="ghost" type="button">恢复当前配置</button>
+      </div>
+      <div class="status" id="status">当前使用的是仓库内 `config` 的快照。Save 会先生成新的 `config.js` 内容，再尝试调用文件保存。</div>
+      <textarea id="output" spellcheck="false"></textarea>
+    </section>
+
+    <section class="panel">
+      <h2>三个同心圆预览</h2>
+      <div class="canvas-wrap">
+        <canvas id="preview" width="1280" height="720"></canvas>
+      </div>
+      <div class="stats">
+        <div class="stat">
+          <div class="stat-key">派生 centerOffsetY</div>
+          <div class="stat-value" id="centerOffsetValue"></div>
+        </div>
+        <div class="stat">
+          <div class="stat-key">地表弧顶 Y</div>
+          <div class="stat-value" id="groundApexValue"></div>
+        </div>
+        <div class="stat">
+          <div class="stat-key">大气层弧顶 Y</div>
+          <div class="stat-value" id="atmoApexValue"></div>
+        </div>
+        <div class="stat">
+          <div class="stat-key">引力圈弧顶 Y</div>
+          <div class="stat-value" id="gravityApexValue"></div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    const initialConfig = {
+      canvas: { width: 1280, height: 720 },
+      planetCenterXFactor: 0.5,
+      planetCurvature: 0.18,
+      planetCenterOffsetY: 360,
+      gravityRangeRadiusFactor: 0.792,
+      atmosphereRadiusFactor: 0.62496,
+      groundRadiusFactor: 0.4872,
+      groundArcSegments: 48,
+      landingHighlightSeconds: 0.45,
+      spawnTopZoneRatio: 0.4,
+      trajectoryWeights: {
+        graze: 0.7,
+        nearMiss: 0.2,
+        recoverable: 0.1
+      },
+      fragmentGravity: 28600,
+      asteroidGravity: 14950,
+      prototypeVersion: 'v0.2'
+    };
+
+    const working = JSON.parse(JSON.stringify(initialConfig));
+    const canvas = document.getElementById('preview');
+    const ctx = canvas.getContext('2d');
+    const output = document.getElementById('output');
+    const status = document.getElementById('status');
+
+    const numberKeys = [
+      'planetCurvature',
+      'gravityRangeRadiusFactor',
+      'atmosphereRadiusFactor',
+      'groundRadiusFactor'
+    ];
+
+    const formatNumber = (value, digits = 5) => {
+      const rounded = Number(value.toFixed(digits));
+      return Number.isInteger(rounded) ? String(rounded) : String(rounded);
+    };
+
+    const deriveCenterOffsetY = (config) => {
+      const groundRadius = config.canvas.width * config.groundRadiusFactor;
+      return Math.max(groundRadius - config.canvas.height * config.planetCurvature, 0);
+    };
+
+    const getGeometry = (config) => {
+      const gravityRadius = config.canvas.width * config.gravityRangeRadiusFactor;
+      const atmosphereRadius = config.canvas.width * config.atmosphereRadiusFactor;
+      const groundRadius = config.canvas.width * config.groundRadiusFactor;
+      const centerOffsetY = deriveCenterOffsetY(config);
+      return {
+        centerX: config.canvas.width * config.planetCenterXFactor,
+        centerY: config.canvas.height + centerOffsetY,
+        centerOffsetY,
+        gravityRadius,
+        atmosphereRadius,
+        groundRadius
+      };
+    };
+
+    const buildConfigText = (config) => {
+      const centerOffsetY = deriveCenterOffsetY(config);
+      return `(function () {\n  Starfall.config = {\n    canvas: { width: ${config.canvas.width}, height: ${config.canvas.height} },\n    planetCenterXFactor: ${formatNumber(config.planetCenterXFactor, 3)},\n    planetCurvature: ${formatNumber(config.planetCurvature, 3)},\n    planetCenterOffsetY: ${formatNumber(centerOffsetY, 3)},\n    gravityRangeRadiusFactor: ${formatNumber(config.gravityRangeRadiusFactor)},\n    atmosphereRadiusFactor: ${formatNumber(config.atmosphereRadiusFactor)},\n    groundRadiusFactor: ${formatNumber(config.groundRadiusFactor)},\n    groundArcSegments: ${config.groundArcSegments},\n    landingHighlightSeconds: ${formatNumber(config.landingHighlightSeconds, 3)},\n    spawnTopZoneRatio: ${formatNumber(config.spawnTopZoneRatio, 3)},\n    trajectoryWeights: {\n      graze: ${formatNumber(config.trajectoryWeights.graze, 3)},\n      nearMiss: ${formatNumber(config.trajectoryWeights.nearMiss, 3)},\n      recoverable: ${formatNumber(config.trajectoryWeights.recoverable, 3)}\n    },\n    fragmentGravity: ${config.fragmentGravity},\n    asteroidGravity: ${config.asteroidGravity},\n    prototypeVersion: '${config.prototypeVersion}'\n  };\n})();\n`;
+    };
+
+    const syncControls = () => {
+      numberKeys.forEach((key) => {
+        const input = document.getElementById(key);
+        const valueEl = document.getElementById(`${key}Value`);
+        input.value = working[key];
+        valueEl.textContent = formatNumber(working[key]);
+      });
+    };
+
+    const updateDerivedStats = () => {
+      const geometry = getGeometry(working);
+      document.getElementById('centerOffsetValue').textContent = formatNumber(geometry.centerOffsetY, 2);
+      document.getElementById('groundApexValue').textContent = formatNumber(geometry.centerY - geometry.groundRadius, 2);
+      document.getElementById('atmoApexValue').textContent = formatNumber(geometry.centerY - geometry.atmosphereRadius, 2);
+      document.getElementById('gravityApexValue').textContent = formatNumber(geometry.centerY - geometry.gravityRadius, 2);
+    };
+
+    const drawPreview = () => {
+      const { width, height } = canvas;
+      const geometry = getGeometry(working);
+      ctx.clearRect(0, 0, width, height);
+
+      const sky = ctx.createLinearGradient(0, 0, 0, height);
+      sky.addColorStop(0, '#0c1830');
+      sky.addColorStop(1, '#060d17');
+      ctx.fillStyle = sky;
+      ctx.fillRect(0, 0, width, height);
+
+      ctx.beginPath();
+      ctx.arc(geometry.centerX, geometry.centerY, geometry.atmosphereRadius, Math.PI, 0);
+      ctx.fillStyle = '#2f584e';
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.arc(geometry.centerX, geometry.centerY, geometry.groundRadius, Math.PI, 0);
+      ctx.fillStyle = '#26413a';
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.arc(geometry.centerX, geometry.centerY, geometry.gravityRadius, Math.PI, 0);
+      ctx.strokeStyle = 'rgba(137, 215, 255, 0.35)';
+      ctx.lineWidth = 5;
+      ctx.stroke();
+
+      ctx.fillStyle = 'rgba(255,255,255,0.12)';
+      ctx.fillRect(0, 0, width, 1);
+    };
+
+    const refresh = () => {
+      syncControls();
+      updateDerivedStats();
+      drawPreview();
+      output.value = buildConfigText(working);
+    };
+
+    numberKeys.forEach((key) => {
+      document.getElementById(key).addEventListener('input', (event) => {
+        working[key] = Number(event.target.value);
+        refresh();
+      });
+    });
+
+    document.getElementById('resetBtn').addEventListener('click', () => {
+      Object.assign(working, JSON.parse(JSON.stringify(initialConfig)));
+      status.textContent = '已恢复到当前仓库配置快照。';
+      refresh();
+    });
+
+    document.getElementById('copyBtn').addEventListener('click', async () => {
+      const text = buildConfigText(working);
+      output.value = text;
+      try {
+        await navigator.clipboard.writeText(text);
+        status.textContent = '已复制新的 config.js 内容。';
+      } catch {
+        status.textContent = '复制失败，下面文本框里已经是新的 config.js 内容。';
+      }
+    });
+
+    document.getElementById('saveBtn').addEventListener('click', async () => {
+      const text = buildConfigText(working);
+      output.value = text;
+      if (window.showSaveFilePicker) {
+        try {
+          const handle = await window.showSaveFilePicker({
+            suggestedName: 'config.js',
+            types: [
+              {
+                description: 'JavaScript',
+                accept: { 'text/javascript': ['.js'] }
+              }
+            ]
+          });
+          const writable = await handle.createWritable();
+          await writable.write(text);
+          await writable.close();
+          status.textContent = '已写入文件。请选择项目里的 src/core/config.js 进行覆盖。';
+          return;
+        } catch (error) {
+          status.textContent = `文件保存未完成：${error.message || error}`;
+          return;
+        }
+      }
+      status.textContent = '当前浏览器不支持直接写文件。下面文本框里是新的 config.js 内容，可复制后覆盖 src/core/config.js。';
+    });
+
+    refresh();
+  </script>
+</body>
+</html>

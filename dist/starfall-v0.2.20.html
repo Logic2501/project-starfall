@@ -1,0 +1,1528 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+  <title>Project Starfall v0.2.20</title>
+  <style>
+/* src/styles/main.css */
+:root {
+  --bg: #10141c;
+  --panel: #1a2130;
+  --text: #e3e8f0;
+  --accent: #53b1ff;
+  --planet-a: #3e6d5f;
+  --planet-b: #29463f;
+}
+
+* { box-sizing: border-box; }
+
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  margin: 0;
+  color: var(--text);
+  background: radial-gradient(circle at 50% 10%, #1d2940 0%, var(--bg) 55%);
+  font-family: "Noto Sans SC", "PingFang SC", sans-serif;
+}
+
+#app {
+  height: 100vh;
+  overflow: hidden;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+}
+
+.hud-top,
+.bottom-panel {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  background: color-mix(in srgb, var(--panel) 88%, black);
+  padding: 10px 14px;
+}
+
+.battlefield-wrap {
+  display: grid;
+  place-items: center;
+  min-height: 0;
+  overflow: hidden;
+  padding: 8px;
+}
+
+#battlefield {
+  width: min(96vw, 1280px);
+  max-width: 100%;
+  max-height: calc(100vh - 130px);
+  aspect-ratio: 16 / 9;
+  height: auto;
+  border: 1px solid #2a3a58;
+  background: #0e1420;
+}
+
+button {
+  border: 1px solid #35527a;
+  background: #19283b;
+  color: var(--text);
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.result-panel {
+  margin-left: auto;
+  opacity: 0.9;
+}
+
+  </style>
+</head>
+<body>
+  <!-- build: 2026-04-21T08:17:44.081Z -->
+  <div id="app">
+    <header class="hud-top">
+      <span id="waveLabel">波次：1</span>
+      <span id="resourceLabel">资源：0</span>
+      <button id="pauseBtn" type="button">暂停</button>
+      <button id="langBtn" type="button">中文 / English</button>
+    </header>
+
+    <main class="battlefield-wrap">
+      <canvas id="battlefield" width="1280" height="720" aria-label="星潮计划战场画布"></canvas>
+    </main>
+
+    <aside class="bottom-panel">
+      <button id="startWaveBtn" type="button">开始下一波</button>
+      <button id="techBtn" type="button">科技（原型壳）</button>
+      <div id="resultPanel" class="result-panel" aria-live="polite"></div>
+    </aside>
+  </div>
+
+  <script>
+    window.Starfall = window.Starfall || {};
+    window.Starfall.runtime = window.Starfall.runtime || { error: null };
+
+    (function () {
+      const writeRuntimeError = (err) => {
+        window.Starfall.runtime.error = err;
+        const panel = document.getElementById('resultPanel');
+        if (panel) {
+          const msg = String(err && err.message ? err.message : err).slice(0, 240);
+          panel.textContent = `运行错误：${msg}`;
+        }
+        console.error(err);
+      };
+
+      window.addEventListener('error', (event) => {
+        const err = event.error || new Error(event.message || 'Unknown error');
+        writeRuntimeError(err);
+      });
+
+      window.addEventListener('unhandledrejection', (event) => {
+        const err = event.reason instanceof Error ? event.reason : new Error(String(event.reason));
+        writeRuntimeError(err);
+      });
+    })();
+  </script>
+  <script>
+// src/core/bootstrap.js
+(function () {
+  window.Starfall = window.Starfall || {};
+  Starfall.modules = Starfall.modules || {};
+  Starfall.runtime = Starfall.runtime || {
+    error: null
+  };
+})();
+
+
+// src/core/config.js
+(function () {
+  Starfall.config = {
+    canvas: { width: 1280, height: 720 },
+    planetCenterXFactor: 0.5,
+    planetCenterOffsetY: 360,
+    gravityRangeRadiusFactor: 0.66,
+    atmosphereRadiusFactor: 0.62 * 0.7 * 1.2,
+    groundRadiusFactor: 0.58 * 0.7,
+    groundArcSegments: 48,
+    landingHighlightSeconds: 0.45,
+    spawnTopZoneRatio: 0.4,
+    trajectoryWeights: {
+      graze: 0.7,
+      nearMiss: 0.2,
+      recoverable: 0.1
+    },
+    fragmentGravity: 28600,
+    asteroidGravity: 14950,
+    prototypeVersion: 'v0.2'
+  };
+})();
+
+
+// src/core/geometry.js
+(function () {
+  Starfall.geometry = {
+    getPlanetGeometry(config, canvas) {
+      return {
+        centerX: canvas.width * config.planetCenterXFactor,
+        centerY: canvas.height + config.planetCenterOffsetY,
+        gravityRadius: canvas.width * config.gravityRangeRadiusFactor,
+        atmosphereRadius: canvas.width * config.atmosphereRadiusFactor,
+        groundRadius: canvas.width * config.groundRadiusFactor
+      };
+    },
+
+    getGroundPolyline(config, canvas) {
+      const geometry = Starfall.geometry.getPlanetGeometry(config, canvas);
+      const points = [];
+      const segments = Math.max(8, config.groundArcSegments || 48);
+      for (let i = 0; i <= segments; i += 1) {
+        const t = i / segments;
+        const angle = Math.PI + Math.PI * t;
+        points.push({
+          x: geometry.centerX + Math.cos(angle) * geometry.groundRadius,
+          y: geometry.centerY + Math.sin(angle) * geometry.groundRadius
+        });
+      }
+      return points;
+    },
+
+    intersectsGroundArc(body, polyline) {
+      const radiusSq = body.radius * body.radius;
+      for (let i = 0; i < polyline.length - 1; i += 1) {
+        const a = polyline[i];
+        const b = polyline[i + 1];
+        const abx = b.x - a.x;
+        const aby = b.y - a.y;
+        const abLenSq = abx * abx + aby * aby || 1;
+        const t = Math.max(0, Math.min(1, ((body.x - a.x) * abx + (body.y - a.y) * aby) / abLenSq));
+        const px = a.x + abx * t;
+        const py = a.y + aby * t;
+        const dx = body.x - px;
+        const dy = body.y - py;
+        if ((dx * dx + dy * dy) <= radiusSq) {
+          return true;
+        }
+      }
+      return false;
+    }
+  };
+})();
+
+
+// src/core/state-store.js
+(function () {
+  const state = {
+    wave: 1,
+    waveState: 'idle',
+    hasStarted: false,
+    activeWaveId: null,
+    time: 0,
+    resources: 50,
+    waveStats: {},
+    locale: 'zh-CN',
+    running: true,
+    asteroids: [],
+    fragments: [],
+    projectiles: [],
+    turret: { x: 640, y: 655, angle: -Math.PI / 2 }
+  };
+
+  Starfall.store = {
+    get: () => state,
+    ensureWaveStats: (waveId) => {
+      if (!state.waveStats[waveId]) {
+        state.waveStats[waveId] = {
+          gain: 0,
+          loss: 0,
+          projectileSpend: 0,
+          shattered: 0,
+          unshattered: 0,
+          nextWaveStarted: false,
+          settlementFinished: false
+        };
+      }
+      return state.waveStats[waveId];
+    },
+    clearCombatEntities: () => {
+      state.asteroids = [];
+      state.projectiles = [];
+    }
+  };
+})();
+
+
+// src/core/event-bus.js
+(function () {
+  const listeners = new Map();
+  Starfall.events = {
+    on: (name, fn) => {
+      const arr = listeners.get(name) || [];
+      arr.push(fn);
+      listeners.set(name, arr);
+    },
+    emit: (name, payload) => {
+      (listeners.get(name) || []).forEach((fn) => fn(payload));
+    }
+  };
+})();
+
+
+// src/core/game-loop.js
+(function () {
+  const captureRuntimeError = (err) => {
+    Starfall.runtime.error = err;
+    // 仍然保留浏览器控制台栈，便于排查。
+    console.error(err);
+  };
+
+  Starfall.loop = {
+    start(update, render) {
+      let last = performance.now();
+      const frame = (now) => {
+        const dt = Math.min(0.033, (now - last) / 1000);
+        last = now;
+        const state = Starfall.store.get();
+        try {
+          if (state.running) {
+            update(dt);
+          }
+        } catch (err) {
+          state.running = false;
+          captureRuntimeError(err);
+        }
+        try {
+          render();
+        } catch (err) {
+          state.running = false;
+          captureRuntimeError(err);
+        }
+        requestAnimationFrame(frame);
+      };
+      requestAnimationFrame(frame);
+    }
+  };
+})();
+
+
+// src/data/balancing.js
+(function () {
+  Starfall.data = Starfall.data || {};
+  Starfall.data.balancing = {
+    fireCooldown: 0.18,
+    projectileSpeed: 900,
+    asteroidBaseSpeedScale: 0.7,
+    asteroidSpeedMultiplier: 1.5,
+    atmosphereEntrySpeedFactor: 0.9,
+    atmosphereDeepSpeedFactor: 0.75,
+    projectileCost: 1,
+    projectileRadius: 24,
+    baseAsteroidValue: 10,
+    ablationThreshold: 4,
+    weaponProfiles: {
+      standardCannon: {
+        damage_mode: 'explosive',
+        impact_power: 1.0,
+        impulse: 160,
+        spread: 0.8,
+        upwardBias: 0.2,
+        decomposition: 1.0
+      }
+    }
+  };
+})();
+
+
+// src/data/waves.v0.2.js
+(function () {
+  Starfall.data = Starfall.data || {};
+  Starfall.data.waves = [
+    { spawnCount: 2, speed: 80, size: 1.0, fragility: 1.0, value: 10 },
+    { spawnCount: 3, speed: 90, size: 1.05, fragility: 1.0, value: 10 },
+    { spawnCount: 3, speed: 100, size: 1.1, fragility: 0.95, value: 12 },
+    { spawnCount: 4, speed: 110, size: 1.15, fragility: 0.9, value: 12 },
+    { spawnCount: 4, speed: 120, size: 1.2, fragility: 0.9, value: 14 }
+  ];
+})();
+
+
+// src/data/locale/zh-CN.js
+(function () {
+  Starfall.i18n = Starfall.i18n || {};
+  Starfall.i18n['zh-CN'] = {
+    wave: '波次',
+    resources: '资源',
+    startWave: '开始下一波',
+    waveInProgress: '波次进行中',
+    settlingInProgress: '结算中',
+    pause: '暂停',
+    resume: '继续',
+    gain: '本波资源收益',
+    loss: '本波资源损失',
+    projectileSpend: '炮弹资源消耗',
+    shattered: '击碎数量',
+    unshattered: '未击碎数量'
+  };
+})();
+
+
+// src/data/locale/en-US.js
+(function () {
+  Starfall.i18n = Starfall.i18n || {};
+  Starfall.i18n['en-US'] = {
+    wave: 'Wave',
+    resources: 'Resources',
+    startWave: 'Start Next Wave',
+    waveInProgress: 'Wave In Progress',
+    settlingInProgress: 'Settling',
+    pause: 'Pause',
+    resume: 'Resume',
+    gain: 'Wave Gain',
+    loss: 'Wave Loss',
+    projectileSpend: 'Ammo Spend',
+    shattered: 'Shattered',
+    unshattered: 'Unshattered'
+  };
+})();
+
+
+// src/entities/asteroid.js
+(function () {
+  Starfall.entities = Starfall.entities || {};
+
+  const makePolygon = (baseRadius, pointsCount, jitter) => {
+    const points = [];
+    for (let i = 0; i < pointsCount; i += 1) {
+      const t = (i / pointsCount) * Math.PI * 2;
+      const radius = baseRadius * (1 - jitter + Math.random() * jitter * 2);
+      points.push({ x: Math.cos(t) * radius, y: Math.sin(t) * radius });
+    }
+    return points;
+  };
+
+  const scalePolygon = (polygon, scale) =>
+    polygon.map((point) => ({
+      x: point.x * scale,
+      y: point.y * scale
+    }));
+
+  const createLayout = (sizeScale) => {
+    const coreCount = 4 + Math.floor(Math.random() * 3); // 4~6
+    const detailCount = 4 + Math.floor(Math.random() * 5); // 4~8
+    const chunks = [];
+
+    for (let i = 0; i < coreCount; i += 1) {
+      chunks.push({
+        kind: 'core',
+        ox: ((Math.random() - 0.5) * 22) * sizeScale,
+        oy: ((Math.random() - 0.5) * 16) * sizeScale,
+        polygon: scalePolygon(
+          makePolygon(16 + Math.random() * 8, 6 + Math.floor(Math.random() * 3), 0.28),
+          sizeScale
+        )
+      });
+    }
+
+    for (let i = 0; i < detailCount; i += 1) {
+      chunks.push({
+        kind: 'detail',
+        ox: ((Math.random() - 0.5) * 30) * sizeScale,
+        oy: ((Math.random() - 0.5) * 22) * sizeScale,
+        polygon: scalePolygon(
+          makePolygon(5 + Math.random() * 5, 5 + Math.floor(Math.random() * 3), 0.4),
+          sizeScale
+        )
+      });
+    }
+    return chunks;
+  };
+
+  Starfall.entities.createAsteroid = (x, y, speed, value, waveId, options = {}) => {
+    const sizeScale = options.sizeScale ?? 1;
+    const direction = options.direction || { x: 1, y: 0.15 };
+    const dirLength = Math.hypot(direction.x, direction.y) || 1;
+    const speedBase = speed * Starfall.data.balancing.asteroidBaseSpeedScale;
+    const startSpeed = speedBase * Starfall.data.balancing.asteroidSpeedMultiplier;
+
+    return {
+      id: crypto.randomUUID(),
+      waveId,
+      x,
+      y,
+      vx: (direction.x / dirLength) * startSpeed,
+      vy: (direction.y / dirLength) * startSpeed,
+      speedBase,
+      cruiseSpeed: startSpeed,
+      atmosphereAdjusted: false,
+      radius: 26 * sizeScale,
+      captured: false,
+      captureScored: false,
+      landingUntil: null,
+      rotation: Math.random() * Math.PI * 2,
+      spin: (Math.random() - 0.5) * 0.8,
+      layout: createLayout(sizeScale),
+      hp: 100,
+      value,
+      sizeScale
+    };
+  };
+})();
+
+
+// src/entities/fragment.js
+(function () {
+  Starfall.entities = Starfall.entities || {};
+  Starfall.entities.createFragment = ({
+    x,
+    y,
+    waveId,
+    size,
+    massValue,
+    vx,
+    vy,
+    parts,
+    kind = 'detail',
+    rotation = 0,
+    spin = 0
+  }) => ({
+    id: crypto.randomUUID(),
+    x,
+    y,
+    waveId,
+    vx,
+    vy,
+    size,
+    parts,
+    kind,
+    rotation,
+    spin,
+    massValue,
+    captureScored: false,
+    captured: false,
+    landingUntil: null,
+    lost_reason: null,
+    landed: false
+  });
+})();
+
+
+// src/entities/projectile.js
+(function () {
+  Starfall.entities = Starfall.entities || {};
+  Starfall.entities.createProjectile = (x, y, angle, speed, damageProfile) => ({
+    id: crypto.randomUUID(),
+    x,
+    y,
+    vx: Math.cos(angle) * speed,
+    vy: Math.sin(angle) * speed,
+    radius: Starfall.data.balancing.projectileRadius,
+    ttl: 2.0,
+    damageProfile
+  });
+})();
+
+
+// src/entities/turret.js
+(function () {
+  Starfall.entities = Starfall.entities || {};
+  Starfall.entities.updateTurretAngle = (state, targetX, targetY) => {
+    state.turret.angle = Math.atan2(targetY - state.turret.y, targetX - state.turret.x);
+  };
+})();
+
+
+// src/systems/spawn-system.js
+ (function () {
+  Starfall.systems = Starfall.systems || {};
+
+  const pickWeighted = (weights) => {
+    const total = Object.values(weights).reduce((sum, value) => sum + value, 0) || 1;
+    let roll = Math.random() * total;
+    for (const [key, value] of Object.entries(weights)) {
+      roll -= value;
+      if (roll <= 0) return key;
+    }
+    return Object.keys(weights)[0];
+  };
+
+  const sampleEntry = () => pickWeighted({ top: 0.42, 'left-upper': 0.29, 'right-upper': 0.29 });
+
+  const rotate = (x, y, angle) => ({
+    x: x * Math.cos(angle) - y * Math.sin(angle),
+    y: x * Math.sin(angle) + y * Math.cos(angle)
+  });
+
+  const normalize = (x, y) => {
+    const len = Math.hypot(x, y) || 1;
+    return { x: x / len, y: y / len };
+  };
+
+  const sampleTrajectoryClass = (weights) => pickWeighted(weights);
+
+  const sampleDirection = (entry, trajectoryClass, spawnX, canvasWidth) => {
+    const fromLeft = spawnX < canvasWidth * 0.5;
+    const directionMap = {
+      top: {
+        graze: fromLeft ? { x: 0.95, y: 0.22 } : { x: -0.95, y: 0.22 },
+        nearMiss: fromLeft ? { x: 0.72, y: 0.42 } : { x: -0.72, y: 0.42 },
+        recoverable: fromLeft ? { x: 0.45, y: 0.64 } : { x: -0.45, y: 0.64 }
+      },
+      'left-upper': {
+        graze: { x: 0.98, y: 0.08 },
+        nearMiss: { x: 0.9, y: 0.24 },
+        recoverable: { x: 0.78, y: 0.4 }
+      },
+      'right-upper': {
+        graze: { x: -0.98, y: 0.08 },
+        nearMiss: { x: -0.9, y: 0.24 },
+        recoverable: { x: -0.78, y: 0.4 }
+      }
+    };
+    const spreadMap = {
+      graze: Math.PI / 18,
+      nearMiss: Math.PI / 14,
+      recoverable: Math.PI / 16
+    };
+    const base = directionMap[entry][trajectoryClass];
+    const rotated = rotate(base.x, base.y, (Math.random() * 2 - 1) * spreadMap[trajectoryClass]);
+    return normalize(rotated.x, rotated.y);
+  };
+
+  const sampleSpawnPoint = (entry, canvasWidth, canvasHeight, topZoneRatio) => {
+    const topLimit = canvasHeight * topZoneRatio;
+    if (entry === 'top') {
+      return {
+        x: 120 + Math.random() * (canvasWidth - 240),
+        y: -canvasHeight * 0.08 + Math.random() * (canvasHeight * 0.23)
+      };
+    }
+    if (entry === 'left-upper') {
+      return {
+        x: -80,
+        y: canvasHeight * 0.02 + Math.random() * (topLimit - canvasHeight * 0.02)
+      };
+    }
+    return {
+      x: canvasWidth + 80,
+      y: canvasHeight * 0.02 + Math.random() * (topLimit - canvasHeight * 0.02)
+    };
+  };
+
+  Starfall.systems.spawn = {
+    sampleTrajectoryClass,
+    sampleDirection,
+
+    spawnWave(waveIndex, waveId) {
+      const state = Starfall.store.get();
+      const wave = Starfall.data.waves[Math.min(waveIndex, Starfall.data.waves.length - 1)];
+      const canvas = Starfall.config.canvas;
+
+      for (let i = 0; i < wave.spawnCount; i += 1) {
+        const entry = sampleEntry();
+        const spawn = sampleSpawnPoint(entry, canvas.width, canvas.height, Starfall.config.spawnTopZoneRatio);
+        const trajectoryClass = sampleTrajectoryClass(Starfall.config.trajectoryWeights);
+        const direction = sampleDirection(entry, trajectoryClass, spawn.x, canvas.width);
+        const sizeScale = 0.8 + Math.random() * 0.7;
+        const asteroid = Starfall.entities.createAsteroid(
+          spawn.x,
+          spawn.y,
+          wave.speed,
+          Math.round(wave.value * (0.85 + sizeScale * 0.25)),
+          waveId,
+          {
+            sizeScale,
+            direction
+          }
+        );
+        asteroid.spawnEntry = entry;
+        asteroid.trajectoryClass = trajectoryClass;
+        state.asteroids.push(asteroid);
+      }
+    }
+  };
+})();
+
+
+// src/systems/wave-system.js
+(function () {
+  Starfall.systems = Starfall.systems || {};
+
+  const hasAsteroidsOfWave = (state, waveId) => state.asteroids.some((a) => a.waveId === waveId);
+  const hasFragmentsOfWave = (state, waveId) => state.fragments.some((f) => f.waveId === waveId);
+
+  Starfall.systems.wave = {
+    startNextWave() {
+      const state = Starfall.store.get();
+      if (state.asteroids.length > 0) {
+        return false;
+      }
+
+      const prevWaveId = state.activeWaveId;
+      if (prevWaveId !== null) {
+        Starfall.store.ensureWaveStats(prevWaveId).nextWaveStarted = true;
+      }
+
+      if (state.hasStarted) {
+        state.wave += 1;
+      } else {
+        state.hasStarted = true;
+      }
+
+      const waveId = state.wave;
+      state.activeWaveId = waveId;
+      state.waveState = 'combat';
+      Starfall.store.ensureWaveStats(waveId);
+      Starfall.systems.spawn.spawnWave(waveId - 1, waveId);
+      return true;
+    },
+
+    collectEscapedAsteroids(canvasWidth, canvasHeight) {
+      const state = Starfall.store.get();
+      const keep = [];
+      for (const a of state.asteroids) {
+        const escaped = a.x > canvasWidth + 100 || a.y > canvasHeight + 100 || a.x < -100;
+        if (escaped) {
+          if (!a.captured) {
+            Starfall.store.ensureWaveStats(a.waveId).unshattered += 1;
+          }
+        } else {
+          keep.push(a);
+        }
+      }
+      state.asteroids = keep;
+    },
+
+    updateSettlementState() {
+      const state = Starfall.store.get();
+      if (state.asteroids.length > 0) {
+        state.waveState = 'combat';
+      } else if (state.fragments.length > 0) {
+        state.waveState = 'settling';
+      } else {
+        state.waveState = state.hasStarted ? 'idle' : 'idle';
+      }
+    },
+
+    finishSettlementsIfReady() {
+      const state = Starfall.store.get();
+      const waveIds = Object.keys(state.waveStats).map((n) => Number(n));
+
+      for (const waveId of waveIds) {
+        const stats = state.waveStats[waveId];
+        if (!stats || stats.settlementFinished) {
+          continue;
+        }
+
+        if (hasAsteroidsOfWave(state, waveId) || hasFragmentsOfWave(state, waveId)) {
+          continue;
+        }
+
+        stats.settlementFinished = true;
+
+        // 只有玩家未提前点击下一波时，才显示完整结算面板。
+        if (!stats.nextWaveStarted) {
+          Starfall.events.emit('wave:ended', {
+            wave: waveId,
+            gain: stats.gain,
+            loss: stats.loss,
+            projectileSpend: stats.projectileSpend,
+            shattered: stats.shattered,
+            unshattered: stats.unshattered
+          });
+        }
+      }
+    }
+  };
+})();
+
+
+// src/systems/projectile-system.js
+(function () {
+  Starfall.systems = Starfall.systems || {};
+  let cooldown = 0;
+
+  Starfall.systems.projectile = {
+    fire() {
+      const state = Starfall.store.get();
+      if (cooldown > 0 || state.resources < Starfall.data.balancing.projectileCost) {
+        return;
+      }
+      const p = Starfall.entities.createProjectile(
+        state.turret.x + Math.cos(state.turret.angle) * 60,
+        state.turret.y + Math.sin(state.turret.angle) * 60,
+        state.turret.angle,
+        Starfall.data.balancing.projectileSpeed,
+        Starfall.data.balancing.weaponProfiles.standardCannon
+      );
+      state.projectiles.push(p);
+      state.resources -= Starfall.data.balancing.projectileCost;
+      if (state.activeWaveId !== null) {
+        Starfall.store.ensureWaveStats(state.activeWaveId).projectileSpend += Starfall.data.balancing.projectileCost;
+      }
+      cooldown = Starfall.data.balancing.fireCooldown;
+    },
+    update(dt) {
+      cooldown = Math.max(0, cooldown - dt);
+      const state = Starfall.store.get();
+      state.projectiles.forEach((p) => {
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        p.ttl -= dt;
+      });
+      state.projectiles = state.projectiles.filter((p) => p.ttl > 0);
+    }
+  };
+})();
+
+
+// src/systems/collision-system.js
+(function () {
+  Starfall.systems = Starfall.systems || {};
+  Starfall.systems.collision = {
+    update() {
+      const state = Starfall.store.get();
+      const impacts = [];
+      for (const p of state.projectiles) {
+        for (const a of state.asteroids) {
+          const dx = a.x - p.x;
+          const dy = a.y - p.y;
+          if ((dx * dx + dy * dy) <= (a.radius + p.radius) ** 2) {
+            impacts.push({
+              projectileId: p.id,
+              asteroidId: a.id,
+              point: { x: p.x, y: p.y },
+              direction: { x: p.vx, y: p.vy },
+              damageProfile: p.damageProfile || null
+            });
+          }
+        }
+      }
+      if (impacts.length > 0) {
+        Starfall.systems.fracture.applyImpacts(impacts);
+      }
+    }
+  };
+})();
+
+
+// src/systems/fracture-system.js
+(function () {
+  Starfall.systems = Starfall.systems || {};
+
+  const clamp01 = (v) => Math.max(0, Math.min(1, v));
+
+  const rotate = (x, y, angle) => ({
+    x: x * Math.cos(angle) - y * Math.sin(angle),
+    y: x * Math.sin(angle) + y * Math.cos(angle)
+  });
+
+  const normalize = (x, y) => {
+    const len = Math.hypot(x, y) || 1;
+    return { x: x / len, y: y / len };
+  };
+
+  const getPolygonRadius = (polygon) => {
+    let r = 0;
+    for (const p of polygon) {
+      r = Math.max(r, Math.hypot(p.x, p.y));
+    }
+    return r;
+  };
+
+  const buildFragmentVelocity = ({ impact, worldPos, damageProfile }) => {
+    const profile = damageProfile || Starfall.data.balancing.weaponProfiles.standardCannon;
+    const shotDir = normalize(impact.direction?.x ?? 1, impact.direction?.y ?? 0);
+    const away = normalize(worldPos.x - impact.point.x, worldPos.y - impact.point.y);
+    const mixX = away.x * profile.spread + shotDir.x * (1 - profile.spread);
+    const mixY = away.y * profile.spread + shotDir.y * (1 - profile.spread) - profile.upwardBias;
+    const out = normalize(mixX, mixY);
+    const speed = profile.impulse * profile.impact_power * (0.65 + Math.random() * 0.7);
+    return { vx: out.x * speed, vy: out.y * speed };
+  };
+
+  const pickSeeds = (chunks, count) => {
+    const shuffled = [...chunks].sort(() => Math.random() - 0.5);
+    return shuffled.slice(0, count);
+  };
+
+  const rotateVector = (x, y, angle) => ({
+    x: x * Math.cos(angle) - y * Math.sin(angle),
+    y: x * Math.sin(angle) + y * Math.cos(angle)
+  });
+
+  const buildGroupsByDecomposition = (chunks, decomposition) => {
+    if (chunks.length <= 1) return [{ chunks, preserveDirection: true }];
+
+    const coreChunks = chunks.filter((c) => c.kind === 'core');
+    const detailChunks = chunks.filter((c) => c.kind !== 'core');
+    if (coreChunks.length === 0) {
+      return [{ chunks, preserveDirection: true }];
+    }
+
+    const desiredLargeGroups = 2 + Math.floor(Math.random() * 2); // 2~3
+    const largeGroupCount = Math.max(2, Math.min(desiredLargeGroups, coreChunks.length));
+    const coreSeeds = pickSeeds(coreChunks, largeGroupCount);
+    const largeGroups = Array.from({ length: coreSeeds.length }, () => []);
+
+    coreChunks.forEach((chunk) => {
+      let bestIdx = 0;
+      let bestDist = Number.POSITIVE_INFINITY;
+      coreSeeds.forEach((seed, i) => {
+        const dx = seed.ox - chunk.ox;
+        const dy = seed.oy - chunk.oy;
+        const d = dx * dx + dy * dy;
+        if (d < bestDist) {
+          bestDist = d;
+          bestIdx = i;
+        }
+      });
+      largeGroups[bestIdx].push(chunk);
+    });
+
+    const detachCount = Math.min(
+      detailChunks.length,
+      Math.round(detailChunks.length * clamp01(decomposition))
+    );
+    const shuffledDetail = [...detailChunks].sort(() => Math.random() - 0.5);
+    const detachedDetails = shuffledDetail.slice(0, detachCount);
+    const keptDetails = shuffledDetail.slice(detachCount);
+
+    // 一部分小块继续粘在大碎块上，维持 2~3 个较大的主碎块视觉。
+    keptDetails.forEach((chunk, idx) => {
+      largeGroups[idx % largeGroups.length].push(chunk);
+    });
+
+    const outputGroups = largeGroups
+      .filter((g) => g.length > 0)
+      .map((chunksInGroup) => ({ chunks: chunksInGroup, preserveDirection: true }));
+
+    if (detachedDetails.length > 0) {
+      const smallGroupCount = Math.max(
+        1,
+        Math.min(detachedDetails.length, 1 + Math.round(clamp01(decomposition) * 3))
+      );
+      const detailSeeds = pickSeeds(detachedDetails, smallGroupCount);
+      const smallGroups = Array.from({ length: detailSeeds.length }, () => []);
+      detachedDetails.forEach((chunk) => {
+        let bestIdx = 0;
+        let bestDist = Number.POSITIVE_INFINITY;
+        detailSeeds.forEach((seed, i) => {
+          const dx = seed.ox - chunk.ox;
+          const dy = seed.oy - chunk.oy;
+          const d = dx * dx + dy * dy;
+          if (d < bestDist) {
+            bestDist = d;
+            bestIdx = i;
+          }
+        });
+        smallGroups[bestIdx].push(chunk);
+      });
+      outputGroups.push(
+        ...smallGroups.filter((g) => g.length > 0).map((g) => ({ chunks: g, preserveDirection: false }))
+      );
+    }
+
+    return outputGroups;
+  };
+
+  const buildFragmentsFromAsteroid = (asteroid, impact) => {
+    const profile = impact.damageProfile || Starfall.data.balancing.weaponProfiles.standardCannon;
+    const effectiveDecomposition = clamp01((profile.decomposition ?? 1) * (0.75 + profile.impact_power * 0.35));
+
+    const groups = buildGroupsByDecomposition(asteroid.layout, effectiveDecomposition);
+    const fragments = [];
+    const asteroidDir = normalize(asteroid.vx, asteroid.vy);
+    const asteroidSpeed = Math.hypot(asteroid.vx, asteroid.vy);
+
+    for (let groupIndex = 0; groupIndex < groups.length; groupIndex += 1) {
+      const { chunks: group, preserveDirection } = groups[groupIndex];
+      let cx = 0;
+      let cy = 0;
+      for (const chunk of group) {
+        cx += chunk.ox;
+        cy += chunk.oy;
+      }
+      cx /= group.length;
+      cy /= group.length;
+
+      const parts = group.map((chunk) => ({
+        kind: chunk.kind,
+        ox: chunk.ox - cx,
+        oy: chunk.oy - cy,
+        polygon: chunk.polygon
+      }));
+
+      let size = 0;
+      let massValue = 0;
+      let hasCore = false;
+      for (const part of parts) {
+        const polygonRadius = getPolygonRadius(part.polygon);
+        size = Math.max(size, Math.hypot(part.ox, part.oy) + polygonRadius);
+        if (part.kind === 'core') {
+          hasCore = true;
+          massValue += asteroid.value * 0.18;
+        } else {
+          massValue += asteroid.value * 0.07;
+        }
+      }
+
+      const centerWorldOffset = rotate(cx, cy, asteroid.rotation);
+      const worldPos = {
+        x: asteroid.x + centerWorldOffset.x,
+        y: asteroid.y + centerWorldOffset.y
+      };
+      let velocity = buildFragmentVelocity({ impact, worldPos, damageProfile: profile });
+      if (preserveDirection) {
+        // 大碎块保持原方向（偏移不超过 30 度）。
+        const angleOffset = (Math.random() * 2 - 1) * (Math.PI / 6);
+        const dir = rotateVector(asteroidDir.x, asteroidDir.y, angleOffset);
+        const keepSpeed = asteroidSpeed * (0.9 + profile.impact_power * 0.25);
+        velocity = {
+          vx: dir.x * keepSpeed + (Math.random() - 0.5) * 10,
+          vy: dir.y * keepSpeed + (Math.random() - 0.5) * 10
+        };
+      }
+
+      fragments.push(
+        Starfall.entities.createFragment({
+          x: worldPos.x,
+          y: worldPos.y,
+          waveId: asteroid.waveId,
+          size,
+          parts,
+          kind: hasCore ? 'core' : 'detail',
+          massValue,
+          vx: velocity.vx,
+          vy: velocity.vy,
+          rotation: asteroid.rotation,
+          spin: (Math.random() - 0.5) * 2.4
+        })
+      );
+    }
+
+    return fragments;
+  };
+
+  Starfall.systems.fracture = {
+    applyImpacts(impacts) {
+      const state = Starfall.store.get();
+      const firstImpactByAsteroid = new Map();
+      for (const impact of impacts) {
+        if (!firstImpactByAsteroid.has(impact.asteroidId)) {
+          firstImpactByAsteroid.set(impact.asteroidId, impact);
+        }
+      }
+      const dedupedImpacts = [...firstImpactByAsteroid.values()];
+
+      const projectileHitSet = new Set(impacts.map((i) => i.projectileId));
+      const asteroidHitSet = new Set(dedupedImpacts.map((i) => i.asteroidId));
+
+      state.projectiles = state.projectiles.filter((p) => !projectileHitSet.has(p.id));
+
+      for (const impact of dedupedImpacts) {
+        const asteroid = state.asteroids.find((a) => a.id === impact.asteroidId);
+        if (!asteroid) {
+          continue;
+        }
+        const generated = buildFragmentsFromAsteroid(asteroid, impact);
+        state.fragments.push(...generated);
+      }
+
+      for (const asteroidId of asteroidHitSet) {
+        const asteroid = state.asteroids.find((a) => a.id === asteroidId);
+        if (asteroid) {
+          Starfall.store.ensureWaveStats(asteroid.waveId).shattered += 1;
+        }
+      }
+      state.asteroids = state.asteroids.filter((a) => !asteroidHitSet.has(a.id));
+    }
+  };
+})();
+
+
+// src/systems/fragment-system.js
+(function () {
+  Starfall.systems = Starfall.systems || {};
+  Starfall.systems.fragment = {
+    update(dt) {
+      const state = Starfall.store.get();
+      const margin = 100;
+      const geometry = Starfall.geometry.getPlanetGeometry(Starfall.config, Starfall.config.canvas);
+      const { centerX, centerY, gravityRadius: gravityRange } = geometry;
+      const gravityK = Starfall.config.fragmentGravity;
+      const survivors = [];
+      state.fragments.forEach((f) => {
+        if (f.landingUntil !== null) {
+          survivors.push(f);
+          return;
+        }
+        if (
+          f.x < -margin ||
+          f.x > Starfall.config.canvas.width + margin ||
+          f.y < -margin ||
+          f.y > Starfall.config.canvas.height + margin
+        ) {
+          if (!f.captured) {
+            f.lost_reason = 'uncaptured';
+            Starfall.store.ensureWaveStats(f.waveId).loss += Math.round(f.massValue);
+          }
+          return;
+        }
+        const dx = centerX - f.x;
+        const dy = centerY - f.y;
+        const dist = Math.hypot(dx, dy) || 1;
+        if (dist <= gravityRange) {
+          const accel = gravityK / (dist + 120);
+          const ax = (dx / dist) * accel;
+          const ay = (dy / dist) * accel;
+          f.vx += ax * dt;
+          f.vy += ay * dt;
+        }
+        f.x += f.vx * dt;
+        f.y += f.vy * dt;
+        f.rotation += f.spin * dt;
+        survivors.push(f);
+      });
+      state.fragments = survivors;
+    }
+  };
+})();
+
+
+// src/systems/capture-system.js
+(function () {
+  Starfall.systems = Starfall.systems || {};
+  Starfall.systems.capture = {
+    update() {
+      const state = Starfall.store.get();
+      const groundPolyline = Starfall.geometry.getGroundPolyline(Starfall.config, Starfall.config.canvas);
+      state.fragments.forEach((f) => {
+        if (f.landingUntil !== null) {
+          return;
+        }
+        if (Starfall.geometry.intersectsGroundArc({ x: f.x, y: f.y, radius: f.size }, groundPolyline)) {
+          f.captured = true;
+          if (!f.captureScored) {
+            const gain = Math.round(f.massValue);
+            const stats = Starfall.store.ensureWaveStats(f.waveId);
+            stats.gain += gain;
+            state.resources += gain;
+            f.captureScored = true;
+          }
+          f.landingUntil = state.time + Starfall.config.landingHighlightSeconds;
+          f.landed = true;
+          f.vx = 0;
+          f.vy = 0;
+          f.spin = 0;
+        }
+      });
+    }
+  };
+})();
+
+
+// src/systems/settlement-system.js
+  (function () {
+    Starfall.systems = Starfall.systems || {};
+
+  Starfall.systems.settlement = {
+    update() {
+      const state = Starfall.store.get();
+      const { canvas } = Starfall.config;
+      const survivors = [];
+
+      for (const f of state.fragments) {
+        if (f.landingUntil !== null) {
+          if (state.time < f.landingUntil) {
+            survivors.push(f);
+          }
+          continue;
+        }
+        if (f.x < -100 || f.x > canvas.width + 100 || f.y < -120) {
+          if (!f.captured) {
+            f.lost_reason = 'uncaptured';
+            Starfall.store.ensureWaveStats(f.waveId).loss += Math.round(f.massValue);
+          }
+          continue;
+        }
+        survivors.push(f);
+      }
+
+      state.fragments = survivors;
+    }
+  };
+})();
+
+
+// src/systems/economy-system.js
+(function () {
+  Starfall.systems = Starfall.systems || {};
+  Starfall.systems.economy = {
+    snapshotWaveResult(waveId) {
+      const state = Starfall.store.get();
+      const stats = state.waveStats[waveId] || { gain: 0, loss: 0, shattered: 0, unshattered: 0 };
+      return {
+        gain: stats.gain,
+        loss: stats.loss,
+        shattered: stats.shattered,
+        unshattered: stats.unshattered
+      };
+    }
+  };
+})();
+
+
+// src/render/canvas-renderer.js
+(function () {
+  Starfall.render = Starfall.render || {};
+  Starfall.render.create = (canvas) => {
+    const ctx = canvas.getContext('2d');
+    return { ctx, width: canvas.width, height: canvas.height };
+  };
+})();
+
+
+// src/render/layers/background-layer.js
+  (function () {
+    Starfall.render = Starfall.render || {};
+    Starfall.render.drawBackground = ({ ctx, width, height }) => {
+    const geometry = Starfall.geometry.getPlanetGeometry(Starfall.config, { width, height });
+    const { centerX, centerY, gravityRadius, atmosphereRadius, groundRadius } = geometry;
+
+    ctx.clearRect(0, 0, width, height);
+    ctx.fillStyle = '#0d1626';
+    ctx.fillRect(0, 0, width, height);
+
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, atmosphereRadius, Math.PI, 0);
+    ctx.fillStyle = '#31584e';
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, groundRadius, Math.PI, 0);
+    ctx.fillStyle = '#28463e';
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, gravityRadius, Math.PI, 0);
+    ctx.strokeStyle = 'rgba(90, 180, 220, 0.2)';
+    ctx.lineWidth = 6;
+    ctx.stroke();
+  };
+})();
+
+
+// src/render/layers/combat-layer.js
+(function () {
+  Starfall.render = Starfall.render || {};
+  const drawPolygon = (ctx, points) => {
+    if (!points || points.length < 3) return;
+    ctx.beginPath();
+    ctx.moveTo(points[0].x, points[0].y);
+    for (let i = 1; i < points.length; i += 1) {
+      ctx.lineTo(points[i].x, points[i].y);
+    }
+    ctx.closePath();
+  };
+
+  Starfall.render.drawCombat = ({ ctx }) => {
+    const state = Starfall.store.get();
+
+    ctx.save();
+    ctx.translate(state.turret.x, state.turret.y);
+    ctx.rotate(state.turret.angle);
+    ctx.fillStyle = '#97badf';
+    ctx.fillRect(0, -12, 116, 24);
+    ctx.restore();
+
+    ctx.beginPath();
+    ctx.arc(state.turret.x, state.turret.y, 40, 0, Math.PI * 2);
+    ctx.fillStyle = '#6f89a8';
+    ctx.fill();
+
+    state.asteroids.forEach((a) => {
+      ctx.save();
+      ctx.translate(a.x, a.y);
+      ctx.rotate(a.rotation);
+      for (const chunk of a.layout) {
+        ctx.save();
+        ctx.translate(chunk.ox, chunk.oy);
+        drawPolygon(ctx, chunk.polygon);
+        if (a.captured) {
+          ctx.fillStyle = '#8ee89f';
+        } else {
+          ctx.fillStyle = chunk.kind === 'core' ? '#8a8f98' : '#9aa0aa';
+        }
+        ctx.fill();
+        ctx.restore();
+      }
+      ctx.restore();
+    });
+
+    state.fragments.forEach((f) => {
+      ctx.save();
+      ctx.translate(f.x, f.y);
+      ctx.rotate(f.rotation);
+      for (const part of f.parts) {
+        ctx.save();
+        ctx.translate(part.ox, part.oy);
+        drawPolygon(ctx, part.polygon);
+        if (f.captured) {
+          ctx.fillStyle = '#8ee89f';
+        } else if (part.kind === 'core') {
+          ctx.fillStyle = '#d8a36d';
+        } else {
+          ctx.fillStyle = '#e7c089';
+        }
+        ctx.fill();
+        ctx.restore();
+      }
+      ctx.restore();
+    });
+
+    state.projectiles.forEach((p) => {
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+      ctx.fillStyle = '#ffd879';
+      ctx.fill();
+    });
+  };
+})();
+
+
+// src/render/layers/ui-layer.js
+  (function () {
+    Starfall.render = Starfall.render || {};
+  Starfall.render.drawOverlay = ({ ctx, width, height }) => {
+    const polyline = Starfall.geometry.getGroundPolyline(Starfall.config, { width, height });
+    if (polyline.length < 2) return;
+    ctx.beginPath();
+    ctx.moveTo(polyline[0].x, polyline[0].y);
+    for (let i = 1; i < polyline.length; i += 1) {
+      ctx.lineTo(polyline[i].x, polyline[i].y);
+    }
+    ctx.strokeStyle = 'rgba(255,255,255,0.14)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  };
+})();
+
+
+// src/ui/hud.js
+(function () {
+  Starfall.ui = Starfall.ui || {};
+  Starfall.ui.hud = {
+    update() {
+      const state = Starfall.store.get();
+      const t = Starfall.i18n[state.locale] || Starfall.i18n['zh-CN'];
+      document.getElementById('waveLabel').textContent = `${t.wave}：${state.wave}`;
+      document.getElementById('resourceLabel').textContent = `${t.resources}：${state.resources}`;
+      document.getElementById('pauseBtn').textContent = state.running ? t.pause : t.resume;
+      const panel = document.getElementById('resultPanel');
+      if (Starfall.runtime.error) {
+        const msg = String(Starfall.runtime.error?.message || Starfall.runtime.error).slice(0, 180);
+        panel.textContent = `运行错误：${msg}`;
+        return;
+      }
+      if (state.activeWaveId !== null) {
+        const stats = state.waveStats[state.activeWaveId];
+        if (stats) {
+          panel.textContent =
+            `${t.gain}：+${stats.gain} | ${t.loss}：${stats.loss} | ${t.projectileSpend}：${stats.projectileSpend} | ${t.shattered}：${stats.shattered} | ${t.unshattered}：${stats.unshattered}`;
+        }
+      }
+      const startBtn = document.getElementById('startWaveBtn');
+      const hasAsteroids = state.asteroids.length > 0;
+      const inSettling = state.waveState === 'settling';
+      startBtn.disabled = hasAsteroids;
+      if (hasAsteroids) {
+        startBtn.textContent = t.waveInProgress;
+      } else if (inSettling) {
+        startBtn.textContent = `${t.startWave} (${t.settlingInProgress})`;
+      } else {
+        startBtn.textContent = t.startWave;
+      }
+    }
+  };
+})();
+
+
+// src/ui/post-wave-panel.js
+  (function () {
+    Starfall.ui = Starfall.ui || {};
+    Starfall.ui.postWave = {
+      bind() {
+      Starfall.events.on('wave:ended', ({ wave, gain, loss, projectileSpend, shattered, unshattered }) => {
+        const state = Starfall.store.get();
+        const t = Starfall.i18n[state.locale] || Starfall.i18n['zh-CN'];
+        const panel = document.getElementById('resultPanel');
+        panel.textContent = `${t.wave} ${wave} | ${t.gain}：+${gain} | ${t.loss}：${loss} | ${t.projectileSpend}：${projectileSpend} | ${t.shattered}：${shattered} | ${t.unshattered}：${unshattered}`;
+      });
+    }
+  };
+})();
+
+
+// src/ui/tech-panel.js
+(function () {
+  Starfall.ui = Starfall.ui || {};
+  Starfall.ui.tech = {
+    bind() {
+      const btn = document.getElementById('techBtn');
+      btn.addEventListener('click', () => {
+        // v0.2 原型：科技壳，不做复杂树。
+        alert('科技壳：后续接入 3 节点火炮线。');
+      });
+    }
+  };
+})();
+
+
+// src/ui/language-toggle.js
+(function () {
+  Starfall.ui = Starfall.ui || {};
+  Starfall.ui.language = {
+    bind() {
+      const btn = document.getElementById('langBtn');
+      btn.addEventListener('click', () => {
+        const state = Starfall.store.get();
+        state.locale = state.locale === 'zh-CN' ? 'en-US' : 'zh-CN';
+      });
+    }
+  };
+})();
+
+
+// src/main.js
+(function () {
+  const canvas = document.getElementById('battlefield');
+  const renderer = Starfall.render.create(canvas);
+  const state = Starfall.store.get();
+
+  const startBtn = document.getElementById('startWaveBtn');
+  const pauseBtn = document.getElementById('pauseBtn');
+
+  let pointer = { x: state.turret.x, y: state.turret.y - 80 };
+
+  canvas.addEventListener('mousemove', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    pointer.x = (e.clientX - rect.left) * scaleX;
+    pointer.y = (e.clientY - rect.top) * scaleY;
+    Starfall.entities.updateTurretAngle(state, pointer.x, pointer.y);
+  });
+
+  canvas.addEventListener('mousedown', () => {
+    Starfall.systems.projectile.fire();
+  });
+
+  startBtn.addEventListener('click', () => {
+    const started = Starfall.systems.wave.startNextWave();
+    if (started) {
+      document.getElementById('resultPanel').textContent = '';
+    }
+  });
+
+  pauseBtn.addEventListener('click', () => {
+    state.running = !state.running;
+  });
+
+  Starfall.ui.postWave.bind();
+  Starfall.ui.tech.bind();
+  Starfall.ui.language.bind();
+
+  const update = (dt) => {
+    state.time += dt;
+    const geometry = Starfall.geometry.getPlanetGeometry(Starfall.config, Starfall.config.canvas);
+    const groundPolyline = Starfall.geometry.getGroundPolyline(Starfall.config, Starfall.config.canvas);
+    const { centerX, centerY, atmosphereRadius } = geometry;
+    const asteroidSurvivors = [];
+
+    state.asteroids.forEach((a) => {
+      if (a.landingUntil !== null) {
+        if (state.time < a.landingUntil) {
+          asteroidSurvivors.push(a);
+        }
+        return;
+      }
+
+      const dx = centerX - a.x;
+      const dy = centerY - a.y;
+      const dist = Math.hypot(dx, dy) || 1;
+      if (dist <= atmosphereRadius) {
+        const depth = Math.max(0, Math.min(1, (atmosphereRadius - dist) / atmosphereRadius));
+        const targetFactor =
+          Starfall.data.balancing.atmosphereEntrySpeedFactor +
+          (Starfall.data.balancing.atmosphereDeepSpeedFactor - Starfall.data.balancing.atmosphereEntrySpeedFactor) * depth;
+        const target = a.cruiseSpeed * targetFactor;
+        const speed = Math.hypot(a.vx, a.vy) || 1;
+        const normalizedX = a.vx / speed;
+        const normalizedY = a.vy / speed;
+        if (!a.atmosphereAdjusted) {
+          a.vx = normalizedX * target;
+          a.vy = normalizedY * target;
+          a.atmosphereAdjusted = true;
+        } else if (speed > target) {
+          a.vx = normalizedX * target;
+          a.vy = normalizedY * target;
+        }
+        const accel = Starfall.config.asteroidGravity / (dist + 120);
+        a.vx += (dx / dist) * accel * dt;
+        a.vy += (dy / dist) * accel * dt;
+      }
+      a.x += a.vx * dt;
+      a.y += a.vy * dt;
+      a.rotation += a.spin * dt;
+
+      if (Starfall.geometry.intersectsGroundArc({ x: a.x, y: a.y, radius: a.radius }, groundPolyline)) {
+        a.captured = true;
+        if (!a.captureScored) {
+          const gain = Math.round(a.value);
+          const stats = Starfall.store.ensureWaveStats(a.waveId);
+          stats.gain += gain;
+          state.resources += gain;
+          a.captureScored = true;
+        }
+        a.landingUntil = state.time + Starfall.config.landingHighlightSeconds;
+        a.vx = 0;
+        a.vy = 0;
+        a.spin = 0;
+        asteroidSurvivors.push(a);
+        return;
+      }
+
+      asteroidSurvivors.push(a);
+    });
+    state.asteroids = asteroidSurvivors;
+
+    Starfall.systems.projectile.update(dt);
+    Starfall.systems.collision.update();
+    Starfall.systems.fragment.update(dt);
+    Starfall.systems.capture.update(dt);
+    Starfall.systems.settlement.update();
+    Starfall.systems.wave.collectEscapedAsteroids(canvas.width, canvas.height);
+    Starfall.systems.wave.updateSettlementState();
+    Starfall.systems.wave.finishSettlementsIfReady();
+  };
+
+  const render = () => {
+    Starfall.render.drawBackground(renderer);
+    Starfall.render.drawCombat(renderer);
+    Starfall.render.drawOverlay(renderer);
+    Starfall.ui.hud.update();
+  };
+
+  // 先绘制一帧静态背景，避免运行时异常前出现空白画布。
+  render();
+  Starfall.loop.start(update, render);
+})();
+
+  </script>
+</body>
+</html>

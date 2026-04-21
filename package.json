@@ -1,0 +1,9 @@
+{
+  "name": "project-starfall-prototype",
+  "private": true,
+  "version": "0.2.23",
+  "type": "module",
+  "scripts": {
+    "bundle": "node scripts/bundle-single-html.mjs"
+  }
+}

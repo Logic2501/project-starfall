@@ -1,0 +1,70 @@
+:root {
+  --bg: #10141c;
+  --panel: #1a2130;
+  --text: #e3e8f0;
+  --accent: #53b1ff;
+  --planet-a: #3e6d5f;
+  --planet-b: #29463f;
+}
+
+* { box-sizing: border-box; }
+
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  margin: 0;
+  color: var(--text);
+  background: radial-gradient(circle at 50% 10%, #1d2940 0%, var(--bg) 55%);
+  font-family: "Noto Sans SC", "PingFang SC", sans-serif;
+}
+
+#app {
+  height: 100vh;
+  overflow: hidden;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+}
+
+.hud-top,
+.bottom-panel {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  background: color-mix(in srgb, var(--panel) 88%, black);
+  padding: 10px 14px;
+}
+
+.battlefield-wrap {
+  display: grid;
+  place-items: center;
+  min-height: 0;
+  overflow: hidden;
+  padding: 8px;
+}
+
+#battlefield {
+  width: min(96vw, 1280px);
+  max-width: 100%;
+  max-height: calc(100vh - 130px);
+  aspect-ratio: 16 / 9;
+  height: auto;
+  border: 1px solid #2a3a58;
+  background: #0e1420;
+}
+
+button {
+  border: 1px solid #35527a;
+  background: #19283b;
+  color: var(--text);
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.result-panel {
+  margin-left: auto;
+  opacity: 0.9;
+}
