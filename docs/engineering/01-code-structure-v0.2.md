@@ -21,6 +21,7 @@
 - `public/preview.dev.html`：动画预览开发入口
 - `public/preview.template.html`：动画预览分发模板
 - `scripts/bundle-single-html.mjs`：唯一打包脚本（自动 patch；可传入指定版本号）
+- `scripts/publish-gh-pages.mjs`：将稳定版单 HTML 发布到 `gh-pages` 分支
 - `version.json`：分发版本元数据
 - `dist/`：分发产物目录
 
@@ -28,6 +29,7 @@
 
 - 自动 patch 升版并打包：`npm run bundle`
 - 指定版本并打包：`npm run bundle -- 1.1.0`
+- 发布当前稳定版到 `gh-pages`：`npm run publish:pages`
 
 ## 打包产物
 
@@ -37,3 +39,4 @@
 
 - 常规小改动：默认连续递增 patch。
 - 重大改动：按规范开新分支开发，稳定后合并主分支。
+- GitHub Pages：使用独立 `gh-pages` 分支承载稳定版站点。
