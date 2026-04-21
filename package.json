@@ -4,6 +4,7 @@
   "version": "0.2.23",
   "type": "module",
   "scripts": {
-    "bundle": "node scripts/bundle-single-html.mjs"
+    "bundle": "node scripts/bundle-single-html.mjs",
+    "publish:pages": "node scripts/publish-gh-pages.mjs"
   }
 }
